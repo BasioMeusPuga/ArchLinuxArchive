@@ -29,24 +29,26 @@ def parse_log(package_name):
 	with open(pacman_log, 'r') as log_file:
 		log = log_file.readlines()
 
-		print(colors.CYAN + (package_name + ' :LOG:').rjust(53) + colors.ENDC)
+		print(colors.CYAN + (package_name + ' :LOG:').rjust(63, '-') + colors.ENDC)
 		for i in log:
-			if package_name in i and 'ALPM' in i:
-				log_line = i.replace('\n', '').split()
+			log_line = i.replace('\n', '').split()
+			try:
+				if package_name == log_line[4] and log_line[2] == '[ALPM]':
+					log_date = log_line[0].replace('[', '')
+					log_transaction = log_line[3]
+					log_versions = log_line[5:]
 
-				log_date = log_line[0].replace('[', '')
-				log_transaction = log_line[3]
-				log_versions = log_line[5:]
+					date_object = datetime.datetime.strptime(log_date, '%Y-%m-%d')
+					sexy_date = date_object.strftime('%d-%b-%Y')
 
-				date_object = datetime.datetime.strptime(log_date, '%Y-%m-%d')
-				sexy_date = date_object.strftime('%d-%b-%Y')
+					template = "{0:%s}{1:%s}{2:%s}" % (2, 59, 15)
 
-				template = "{0:%s}{1:%s}{2:%s}" % (2, 49, 15)
-
-				if log_transaction == 'downgraded':
-					print(template.format('•', colors.RED + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC, sexy_date))
-				else:
-					print(template.format('•', colors.GREEN + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC, sexy_date))
+					if log_transaction == 'downgraded':
+						print(template.format('•', colors.RED + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC, sexy_date))
+					else:
+						print(template.format('•', colors.GREEN + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC, sexy_date))
+			except:
+				pass
 
 
 def check_archive(incoming_list):
@@ -93,11 +95,11 @@ def display_shizz(package_list):
 	package_link_list = []
 
 	for i in package_list:
-		print(colors.CYAN + (i + ' :PACKAGES:').rjust(53) + colors.ENDC)
+		print(colors.CYAN + (i + ' :PACKAGES:').rjust(63, '-') + colors.ENDC)
 		for j in package_list[i]:
 
 			digits = len(str(package_number)) - 1
-			template = "{0:%s}{1:%s}{2:%s}" % (3, 40 - digits, 15)
+			template = "{0:%s}{1:%s}{2:%s}" % (3, 50 - digits, 15)
 			print(template.format(colors.YELLOW + str(package_number) + ' ' + colors.ENDC, j[0], j[1]))
 
 			package_link_list.append([i + ' ' + j[0], j[2]])
