@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# pacman -S python-requests python-beautifulsoup4
 
 
 import os
@@ -14,6 +15,7 @@ arch = 'x86_64'
 ala = 'http://seblu.net/a/archive/packages/'
 download_dir = os.getcwd()
 pacman_log = '/var/log/pacman.log'
+pacman_cache_dir = '/var/cache/pacman/pkg/'
 
 
 class colors:
@@ -65,23 +67,32 @@ def check_archive(incoming_list):
 			for i in html.iter_lines():
 				link_line = BeautifulSoup(i.decode("utf-8"), "lxml")
 				link_line_text = i.decode("utf-8").split()
-				try:
-					package_name_parsed = link_line.find('a').get('href')
-					if arch in package_name_parsed and '.sig' not in package_name_parsed:
-						package_name_full = package_name_parsed.split('-')
 
-						package_name = package_name_full[0]
-						package_version = package_name_full[1].replace('%2B', '+') + '-' + package_name_full[2]
-						package_link = ala + package[0] + '/' + package_name + '/' + package_name_parsed
+				try:
+					package_name = link_line.find('a').get('href')
+					parsed_package_name = package_name.replace(package, '')
+
+					if (arch in parsed_package_name or 'any' in parsed_package_name) and '.sig' not in parsed_package_name:
+						package_name_list = parsed_package_name.split('-')
+
+						""" I'd love to know if there's a more comprehensive way of checking for and
+						replacing auto-changed special characters as in the case of what lies beneath """
+						package_version = package_name_list[1].replace('%2B', '+').replace('%3A', ':') + '-' + package_name_list[2]
+						package_link = ala + package[0] + '/' + package + '/' + package_name
 
 						try:
-							available_packages[package_name].append([package_version, link_line_text[2], package_link])
+							available_packages[package].append([package_version, link_line_text[2], package_link])
 						except KeyError:
-							available_packages[package_name] = []
-							available_packages[package_name].append([package_version, link_line_text[2], package_link])
+							available_packages[package] = []
+							available_packages[package].append([package_version, link_line_text[2], package_link])
+						""" Dictionary contains list(s) with scheme:
+						0: Package version
+						1: Last modified date
+						2: Package link """
 
 				except:
 					pass
+
 		else:
 			print(package + ':' + colors.RED + ' ' + str(html.status_code) + colors.ENDC)
 
@@ -94,14 +105,25 @@ def display_shizz(package_list):
 	package_number = 1
 	package_link_list = []
 
+	pacman_cache = os.listdir(pacman_cache_dir)
+
 	for i in package_list:
 		print(colors.CYAN + (i + ' :PACKAGES:').rjust(63, '-') + colors.ENDC)
 		for j in package_list[i]:
 
 			digits = len(str(package_number)) - 1
-			template = "{0:%s}{1:%s}{2:%s}" % (3, 50 - digits, 15)
-			print(template.format(colors.YELLOW + str(package_number) + ' ' + colors.ENDC, j[0], j[1]))
 
+			package_name = j[2].rsplit('/', 1)[1].replace('%2B', '+').replace('%3A', ':')
+
+			# Packages already in the pacman cache are highlighted in green
+			if package_name in pacman_cache:
+				template = "{0:%s}{1:%s}{2:%s}" % (3, 59 - digits, 15)
+				print(template.format(colors.YELLOW + str(package_number) + ' ', colors.GREEN + j[0] + colors.ENDC, j[1]))
+			else:
+				template = "{0:%s}{1:%s}{2:%s}" % (3, 50 - digits, 15)
+				print(template.format(colors.YELLOW + str(package_number) + ' ' + colors.ENDC, j[0], j[1]))
+
+			# A separate list makes it simpler to retain a coherent numbering scheme across multiple selections
 			package_link_list.append([i + ' ' + j[0], j[2]])
 			package_number += 1
 
@@ -133,24 +155,29 @@ def download_packages(newphonewhodis):
 		newphonewhodis = sig_list
 
 	for j in newphonewhodis:
-		package_name = j.rsplit('/', 1)[1].replace('%2B', '+')
+		package_name = j.rsplit('/', 1)[1].replace('%2B', '+').replace('%3A', ':')
 		if os.path.exists(user_def_dir):
 			package_destination = user_def_dir + '/' + package_name
 		else:
 			package_destination = download_dir + '/' + package_name
-		print(colors.GREEN + package_name + colors.ENDC)
 
 		r1 = requests.head(j)
 		file_size = int(r1.headers['Content-length'])
-		bar = progressbar.ProgressBar(maxval=file_size, widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage(), ' ', progressbar.ETA()])
-		r2 = requests.get(j, stream=True)
+		file_size_MiB = file_size * 9.5367e-7
+		print(colors.GREEN + package_name + ' (' + str(file_size_MiB)[:4] + ' MiB)' + colors.ENDC)
 
+		bar = progressbar.ProgressBar(maxval=file_size, widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage(), ' ', progressbar.ETA()])
+
+		r2 = requests.get(j, stream=True)
 		downloaded = 0
-		with open(package_destination, 'wb') as pdest:
-			for chunk in r2.iter_content(100):
-				pdest.write(chunk)
-				downloaded += len(chunk)
-				bar.update(downloaded)
+		try:
+			with open(package_destination, 'wb') as pdest:
+				for chunk in r2.iter_content(100):
+					pdest.write(chunk)
+					downloaded += len(chunk)
+					bar.update(downloaded)
+		except KeyboardInterrupt:
+			print('Download interrupted')
 		print()
 
 
