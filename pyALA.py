@@ -45,11 +45,7 @@ class Pacman:
 	def parse_log(self):
 		print(colors.CYAN + (self.package + ' :LOG:').rjust(63, '-') + colors.ENDC)
 
-		package_version = self.version()
-		if package_version is False:
-			print(self.package + ' is not installed')
-			return
-
+		present_in_log = False
 		with open(pacman_log, 'r') as log_file:
 			log = log_file.readlines()
 
@@ -57,6 +53,8 @@ class Pacman:
 				log_line = i.replace('\n', '').split()
 				try:
 					if self.package == log_line[4] and log_line[2] == '[ALPM]':
+						present_in_log = True
+
 						log_date = log_line[0].replace('[', '')
 						log_transaction = log_line[3]
 						log_versions = log_line[5:]
@@ -79,6 +77,9 @@ class Pacman:
 				except:
 					pass
 
+		if present_in_log is False:
+			print(colors.RED + '• No log entries for ' + self.package + colors.ENDC)
+
 
 def check_archive(incoming_list):
 	available_packages = {}
@@ -87,10 +88,6 @@ def check_archive(incoming_list):
 
 		html = requests.get(ala + package[0] + '/' + package)
 		if html.status_code == 200:
-
-			if check_da_log_yo is True:
-				package_status = Pacman(package)
-				package_status.parse_log()
 
 			for i in html.iter_lines():
 				link_line = BeautifulSoup(i.decode("utf-8"), "lxml")
@@ -125,6 +122,7 @@ def check_archive(incoming_list):
 
 		else:
 			print(package + ':' + colors.RED + ' ' + str(html.status_code) + colors.ENDC)
+			print()
 
 	if len(available_packages) > 0:
 		final_dict = collections.OrderedDict(sorted(available_packages.items(), key=lambda t: t[0]))
@@ -138,10 +136,13 @@ def display_shizz(package_list):
 	pacman_cache = os.listdir(pacman_cache_dir)
 
 	for i in package_list:
+
 		package_list[i].sort(key=lambda x: x[1])
 
 		package_status = Pacman(i)
 		package_version = package_status.version()
+		if check_da_log_yo is True:
+			package_status.parse_log()
 
 		print(colors.CYAN + (i + ' :PACKAGES:').rjust(63, '-') + colors.ENDC)
 		for j in package_list[i]:
@@ -164,6 +165,7 @@ def display_shizz(package_list):
 			# A separate list makes it simpler to retain a coherent numbering scheme across multiple selections
 			package_link_list.append([i + ' ' + j[0], j[2]])
 			package_number += 1
+		print()
 
 	try:
 		download_me = input('Packages: ')
@@ -184,7 +186,6 @@ def display_shizz(package_list):
 
 
 def download_packages(newphonewhodis):
-
 	if get_sig is True:
 		sig_list = []
 		for i in newphonewhodis:
@@ -220,7 +221,6 @@ def download_packages(newphonewhodis):
 
 
 def main():
-
 	global get_sig, user_def_dir, check_da_log_yo
 	get_sig = False
 	user_def_dir = ''
