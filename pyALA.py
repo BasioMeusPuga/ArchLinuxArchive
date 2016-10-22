@@ -3,11 +3,13 @@
 
 
 import os
+import shlex
 import requests
 import argparse
 import datetime
-import collections
+import subprocess
 import progressbar
+import collections
 
 from bs4 import BeautifulSoup
 
@@ -27,30 +29,55 @@ class colors:
 	ENDC = '\033[0m'
 
 
-def parse_log(package_name):
-	with open(pacman_log, 'r') as log_file:
-		log = log_file.readlines()
+class Pacman:
+	def __init__(self, package):
+		self.package = package
 
-		print(colors.CYAN + (package_name + ' :LOG:').rjust(63, '-') + colors.ENDC)
-		for i in log:
-			log_line = i.replace('\n', '').split()
-			try:
-				if package_name == log_line[4] and log_line[2] == '[ALPM]':
-					log_date = log_line[0].replace('[', '')
-					log_transaction = log_line[3]
-					log_versions = log_line[5:]
+	def version(self):
+		try:
+			args_to_subprocess = shlex.split('pacman -Q ' + self.package)
+			pacman_proc = subprocess.run(args_to_subprocess, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+			installed_version = pacman_proc.stdout.decode('utf-8').replace('\n', '').split()[1]
+			return installed_version
+		except:
+			return False
 
-					date_object = datetime.datetime.strptime(log_date, '%Y-%m-%d')
-					sexy_date = date_object.strftime('%d-%b-%Y')
+	def parse_log(self):
+		print(colors.CYAN + (self.package + ' :LOG:').rjust(63, '-') + colors.ENDC)
 
-					template = "{0:%s}{1:%s}{2:%s}" % (2, 59, 15)
+		package_version = self.version()
+		if package_version is False:
+			print(self.package + ' is not installed')
+			return
 
-					if log_transaction == 'downgraded':
-						print(template.format('•', colors.RED + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC, sexy_date))
-					else:
-						print(template.format('•', colors.GREEN + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC, sexy_date))
-			except:
-				pass
+		with open(pacman_log, 'r') as log_file:
+			log = log_file.readlines()
+
+			for i in log:
+				log_line = i.replace('\n', '').split()
+				try:
+					if self.package == log_line[4] and log_line[2] == '[ALPM]':
+						log_date = log_line[0].replace('[', '')
+						log_transaction = log_line[3]
+						log_versions = log_line[5:]
+
+						date_object = datetime.datetime.strptime(log_date, '%Y-%m-%d')
+						sexy_date = date_object.strftime('%d-%b-%Y')
+
+						template = "{0:%s}{1:%s}{2:%s}" % (2, 59, 15)
+
+						if log_transaction == 'downgraded' or log_transaction == 'removed':
+							if len(log_versions) > 1:
+								template = "{0:%s}{1:%s}{2:%s}" % (2, 73, 15)
+								log_versions[1] = colors.WHITE + log_versions[1] + colors.ENDC + colors.RED
+							print(template.format('•', colors.RED + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC, sexy_date))
+						else:
+							if len(log_versions) > 1:
+								template = "{0:%s}{1:%s}{2:%s}" % (2, 73, 15)
+								log_versions[1] = colors.WHITE + log_versions[1] + colors.ENDC + colors.GREEN
+							print(template.format('•', colors.GREEN + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC, sexy_date))
+				except:
+					pass
 
 
 def check_archive(incoming_list):
@@ -62,7 +89,8 @@ def check_archive(incoming_list):
 		if html.status_code == 200:
 
 			if check_da_log_yo is True:
-				parse_log(package)
+				package_status = Pacman(package)
+				package_status.parse_log()
 
 			for i in html.iter_lines():
 				link_line = BeautifulSoup(i.decode("utf-8"), "lxml")
@@ -80,11 +108,13 @@ def check_archive(incoming_list):
 						package_version = package_name_list[1].replace('%2B', '+').replace('%3A', ':') + '-' + package_name_list[2]
 						package_link = ala + package[0] + '/' + package + '/' + package_name
 
+						date_object = datetime.datetime.strptime(link_line_text[2], '%d-%b-%Y')
+
 						try:
-							available_packages[package].append([package_version, link_line_text[2], package_link])
+							available_packages[package].append([package_version, date_object, package_link])
 						except KeyError:
 							available_packages[package] = []
-							available_packages[package].append([package_version, link_line_text[2], package_link])
+							available_packages[package].append([package_version, date_object, package_link])
 						""" Dictionary contains list(s) with scheme:
 						0: Package version
 						1: Last modified date
@@ -108,20 +138,28 @@ def display_shizz(package_list):
 	pacman_cache = os.listdir(pacman_cache_dir)
 
 	for i in package_list:
+		package_list[i].sort(key=lambda x: x[1])
+
+		package_status = Pacman(i)
+		package_version = package_status.version()
+
 		print(colors.CYAN + (i + ' :PACKAGES:').rjust(63, '-') + colors.ENDC)
 		for j in package_list[i]:
 
+			sexy_date = j[1].strftime('%d-%b-%Y')
+			if j[0] == package_version:
+				sexy_date = sexy_date + ' (Installed)'
+
 			digits = len(str(package_number)) - 1
 
-			package_name = j[2].rsplit('/', 1)[1].replace('%2B', '+').replace('%3A', ':')
-
 			# Packages already in the pacman cache are highlighted in green
+			package_name = j[2].rsplit('/', 1)[1].replace('%2B', '+').replace('%3A', ':')
 			if package_name in pacman_cache:
 				template = "{0:%s}{1:%s}{2:%s}" % (3, 59 - digits, 15)
-				print(template.format(colors.YELLOW + str(package_number) + ' ', colors.GREEN + j[0] + colors.ENDC, j[1]))
+				print(template.format(colors.YELLOW + str(package_number) + ' ', colors.GREEN + j[0] + colors.ENDC, sexy_date))
 			else:
 				template = "{0:%s}{1:%s}{2:%s}" % (3, 50 - digits, 15)
-				print(template.format(colors.YELLOW + str(package_number) + ' ' + colors.ENDC, j[0], j[1]))
+				print(template.format(colors.YELLOW + str(package_number) + ' ' + colors.ENDC, j[0], sexy_date))
 
 			# A separate list makes it simpler to retain a coherent numbering scheme across multiple selections
 			package_link_list.append([i + ' ' + j[0], j[2]])
