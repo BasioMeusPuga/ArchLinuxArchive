@@ -1,7 +1,6 @@
 #!/usr/bin/python
 # pacman -S python-requests python-beautifulsoup4
 
-
 import os
 import shlex
 import requests
@@ -30,8 +29,9 @@ class colors:
 
 
 class Pacman:
-	def __init__(self, package):
+	def __init__(self, package, show_num):
 		self.package = package
+		self.show_num = show_num
 
 	def version(self):
 		try:
@@ -48,7 +48,6 @@ class Pacman:
 		present_in_log = False
 		with open(pacman_log, 'r') as log_file:
 			log = log_file.readlines()
-
 			for i in log:
 				log_line = i.replace('\n', '').split()
 				try:
@@ -80,12 +79,56 @@ class Pacman:
 		if present_in_log is False:
 			print(colors.RED + '• No log entries for ' + self.package + colors.ENDC)
 
+	def full_system_upgrade_log(self):
+		upgrades = {}
+		with open('/var/log/pacman.log', 'r') as log_file:
+			get_line = False
+			log = log_file.readlines()
+			for count, line in enumerate(log):
+				if '[PACMAN] starting full system upgrade' in line:
+					upgrade_time = ' '.join(line.replace('[', '').replace(']', '').split()[:2])
+					date_object = datetime.datetime.strptime(upgrade_time, '%Y-%m-%d %H:%M')
+					get_line = True
+				elif '[ALPM]' in line and 'transaction completed' in line:
+					get_line = False
+				elif get_line:
+					if '[ALPM]' in line and 'warning' not in line and 'running ' not in line and 'transaction started' not in line:
+						package_details = line.replace('\n', '').split()[3:]
+						try:
+							upgrades[date_object].append(package_details)
+						except KeyError:
+							upgrades[date_object] = []
+							upgrades[date_object].append(package_details)
+
+		final_dict = collections.OrderedDict(sorted(upgrades.items(), key=lambda t: t[0], reverse=True))
+
+		for count, i in enumerate(final_dict):
+			sexy_date = i.strftime('%H:%M %d-%b-%Y')
+			print(colors.CYAN + sexy_date + colors.ENDC)
+
+			for j in final_dict[i]:
+				log_transaction = j[0]
+				log_package_name = j[1]
+				log_versions = j[2:]
+
+				template = "{0:%s}{1:%s}{2:%s}" % (2, 35, 15)
+				if log_transaction == 'removed':
+					print(template.format('•', log_package_name, colors.RED + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC))
+				else:
+					if len(log_versions) > 1:
+						log_versions[1] = colors.WHITE + log_versions[1] + colors.ENDC + colors.GREEN
+					print(template.format('•', log_package_name, colors.GREEN + ' '.join(log_versions).replace('(', '').replace(')', '') + colors.ENDC))
+
+			if count + 1 == self.show_num:
+				return
+			else:
+				print()
+
 
 def check_archive(incoming_list):
 	available_packages = {}
 
 	for package in incoming_list:
-
 		html = requests.get(ala + package[0] + '/' + package)
 		if html.status_code == 200:
 
@@ -136,17 +179,16 @@ def display_shizz(package_list):
 	pacman_cache = os.listdir(pacman_cache_dir)
 
 	for i in package_list:
-
 		package_list[i].sort(key=lambda x: x[1])
 
-		package_status = Pacman(i)
+		package_status = Pacman(i, None)
 		package_version = package_status.version()
 		if check_da_log_yo is True:
 			package_status.parse_log()
 
 		print(colors.CYAN + (i + ' :PACKAGES:').rjust(63, '-') + colors.ENDC)
-		for j in package_list[i]:
 
+		for j in package_list[i]:
 			sexy_date = j[1].strftime('%d-%b-%Y')
 			if j[0] == package_version:
 				sexy_date = sexy_date + ' (Installed)'
@@ -228,12 +270,16 @@ def main():
 
 	parser = argparse.ArgumentParser(description='Download Arch Linux Archive packages from from your terminal. IT\'S THE FUTURE.')
 	parser.add_argument('package_name', type=str, nargs='*', help='Package Name(s)')
-	parser.add_argument('-d', type=str, nargs=1, help='Download directory', metavar='download_dir', required=False)
+	parser.add_argument('-d', type=str, nargs=1, help='Download directory', metavar='<download_dir>', required=False)
 	parser.add_argument('--log', action='store_true', help='Show history from pacman.log', required=False)
 	parser.add_argument('--sig', action='store_true', help='Get .sig files', required=False)
+	parser.add_argument('-Syu', type=int, nargs='?', help='Show last n full system upgrades', metavar='<n>', const=1, required=False)
 	args = parser.parse_args()
 
-	if args.package_name:
+	if args.Syu:
+		upgrade_log = Pacman(None, args.Syu)
+		upgrade_log.full_system_upgrade_log()
+	elif args.package_name:
 		if args.d:
 			user_def_dir = args.d
 		if args.sig:
