@@ -18,15 +18,16 @@ from bs4 import BeautifulSoup
 
 
 class Options:
-	arch = 'x86_64'
-	ala = 'http://seblu.net/a/archive/packages/'
+	user_def_dir = ''
+	get_sig = False
+	check_da_log_yo = False
+
 	download_dir = os.getcwd()
+
+	arch = 'x86_64'
+	ala = 'https://archive.archlinux.org/packages/'
 	pacman_log = '/var/log/pacman.log'
 	pacman_cache_dir = '/var/cache/pacman/pkg/'
-
-	get_sig = False
-	user_def_dir = ''
-	check_da_log_yo = False
 
 
 class Colors:
@@ -133,6 +134,36 @@ class Pacman:
 				return
 			else:
 				print()
+
+	def full_log(self):
+		current = 0
+		transactions = []
+		with open('/var/log/pacman.log', 'r') as log_file:
+			log = log_file.readlines()
+			log.sort(reverse=True)
+			for line in log:
+				if '[ALPM]' in line and ('upgraded' in line or 'removed' in line or 'installed' in line):
+					transactions.append(line.replace('\n', '').split())
+					current += 1
+					if current > self.show_num:
+						break
+
+		template = "{0:%s}{1:%s}{2:%s}" % (15, 35, 15)
+		for j in transactions:
+			log_date = j[0].replace('[', '')
+			date_object = datetime.datetime.strptime(log_date, '%Y-%m-%d')
+			sexy_date = date_object.strftime('%d-%b-%Y')
+
+			log_transaction = j[3]
+			log_package_name = j[4]
+			log_versions = j[5:]
+
+			if log_transaction == 'upgraded' or log_transaction == 'installed':
+				if len(log_versions) > 1:
+					log_versions[1] = Colors.WHITE + log_versions[1] + Colors.ENDC + Colors.GREEN
+				print(template.format(sexy_date, log_package_name, Colors.GREEN + ' '.join(log_versions).replace('(', '').replace(')', '') + Colors.ENDC))
+			else:
+				print(template.format(sexy_date, log_package_name, Colors.RED + ' '.join(log_versions).replace('(', '').replace(')', '') + Colors.ENDC))
 
 # ----------------------------
 # Function definitions start
@@ -287,11 +318,15 @@ def main():
 	parser.add_argument('--log', action='store_true', help='Show history from pacman.log', required=False)
 	parser.add_argument('--sig', action='store_true', help='Get .sig files', required=False)
 	parser.add_argument('-Syu', type=int, nargs='?', help='Show last n full system upgrades', metavar='<n>', const=1, required=False)
+	parser.add_argument('--all', type=int, nargs='?', help='Show last n transctions (Default: 10)', metavar='<n>', const=10, required=False)
 	args = parser.parse_args()
 
 	if args.Syu:
 		upgrade_log = Pacman(None, args.Syu)
 		upgrade_log.full_system_upgrade_log()
+	elif args.all:
+		all_log = Pacman(None, args.all)
+		all_log.full_log()
 	elif args.package_name:
 		if args.d:
 			Options.user_def_dir = args.d[0]
