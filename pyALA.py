@@ -19,15 +19,15 @@ from bs4 import BeautifulSoup
 
 class Options:
 	user_def_dir = ''
-	get_sig = False
-	check_da_log_yo = False
-
-	download_dir = os.getcwd()
-
 	arch = 'x86_64'
 	ala = 'https://archive.archlinux.org/packages/'
 	pacman_log = '/var/log/pacman.log'
 	pacman_cache_dir = '/var/cache/pacman/pkg/'
+
+	""" Runtime Options """
+	download_dir = os.getcwd()
+	get_sig = False
+	check_da_log_yo = False
 
 
 class Colors:
@@ -142,7 +142,7 @@ class Pacman:
 			log = log_file.readlines()
 			log.sort(reverse=True)
 			for line in log:
-				if '[ALPM]' in line and ('upgraded' in line or 'removed' in line or 'installed' in line):
+				if '[ALPM]' in line and ('upgraded' in line or 'removed' in line or 'installed' in line) and 'installed as' not in line:
 					transactions.append(line.replace('\n', '').split())
 					current += 1
 					if current > self.show_num:
@@ -314,11 +314,11 @@ def download_packages(newphonewhodis):
 def main():
 	parser = argparse.ArgumentParser(description='Download Arch Linux Archive packages from from your terminal. IT\'S THE FUTURE.')
 	parser.add_argument('package_name', type=str, nargs='*', help='Package Name(s)')
-	parser.add_argument('-d', type=str, nargs=1, help='Download directory', metavar='<download_dir>', required=False)
-	parser.add_argument('--log', action='store_true', help='Show history from pacman.log', required=False)
-	parser.add_argument('--sig', action='store_true', help='Get .sig files', required=False)
-	parser.add_argument('-Syu', type=int, nargs='?', help='Show last n full system upgrades', metavar='<n>', const=1, required=False)
-	parser.add_argument('--all', type=int, nargs='?', help='Show last n transctions (Default: 10)', metavar='<n>', const=10, required=False)
+	parser.add_argument('-d', type=str, nargs=1, help='Download directory', metavar='<download_dir>')
+	parser.add_argument('--log', nargs='?', help='Show history from pacman.log', const='with', choices=['with', 'only'])
+	parser.add_argument('--sig', action='store_true', help='Get .sig files')
+	parser.add_argument('-Syu', type=int, nargs='?', help='Show last n full system upgrades', metavar='<n>', const=1)
+	parser.add_argument('--all', type=int, nargs='?', help='Show last n transctions (Default: 10)', metavar='<n>', const=10)
 	args = parser.parse_args()
 
 	if args.Syu:
@@ -327,6 +327,9 @@ def main():
 	elif args.all:
 		all_log = Pacman(None, args.all)
 		all_log.full_log()
+	elif args.log == 'only':
+		package_log = Pacman(args.package_name[0], None)
+		package_log.parse_log()
 	elif args.package_name:
 		if args.d:
 			Options.user_def_dir = args.d[0]
@@ -338,4 +341,6 @@ def main():
 	else:
 		parser.print_help()
 
-main()
+
+if __name__ == '__main__':
+	main()
